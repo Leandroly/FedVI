@@ -1,77 +1,67 @@
 # main.py
-import random, os
-import numpy as np
-import torch
-from torch.utils.data import Subset, DataLoader, TensorDataset
-from torchvision import datasets, transforms
+import torch, random, numpy as np
 
+from src.utils.config import DATASET, MODEL, TRAINING, OPTIMIZER, LOSS_FN
 from src.utils.models import TwoNN
 from src.client.FedAvg import FedAvgClient
 from src.server.FedAvg import FedAvgServer
+from generate_data import mnist_subsets
 
-
-# ----------------- 小工具 -----------------
-def set_seed(seed: int = 0):
+def set_seed(seed: int):
     random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
+    if torch.cuda.is_available(): torch.cuda.manual_seed_all(seed)
 
-@torch.no_grad()
-def evaluate(model: torch.nn.Module, device="cpu") -> float:
-    model.eval()
-    tfm = transforms.ToTensor()
-    test = datasets.MNIST("./data", train=False, download=True, transform=tfm)
-    loader = DataLoader(test, batch_size=256, shuffle=False, num_workers=0)
-    correct = total = 0
-    for x, y in loader:
-        x, y = x.to(device), y.to(device)
-        logits = model(x)
-        pred = logits.argmax(dim=1)
-        correct += (pred == y).sum().item()
-        total += y.numel()
-    return correct / total
+def main():
+    # ---- seed & device ----
+    set_seed(TRAINING["seed"])
+    device = TRAINING["device"]
+    if device == "cuda" and not torch.cuda.is_available():
+        device = "cpu"
+    print(f"Device: {device}")
 
+    # ---- data split (IID / Dirichlet non-IID) ----
+    train_subsets, testset = mnist_subsets(
+        n_clients=DATASET["num_clients"],
+        scheme=DATASET["partition"],          # "iid" 或 "dirichlet"/"noniid"
+        alpha=DATASET["dirichlet_alpha"],
+        seed=TRAINING["seed"],
+        root=DATASET["root"],
+    )
 
-# ----------------- 构建客户端 -----------------
-def make_clients_mnist(K=5, device="cpu", lr=0.05, batch_size=64):
-    tfm = transforms.ToTensor()
-    train = datasets.MNIST(root="./data", train=True, download=True, transform=tfm)
+    # ---- model ----
+    global_model = TwoNN(
+        in_dim=MODEL["in_dim"],
+        hidden=MODEL["hidden"],
+        num_classes=MODEL["num_classes"],
+    )
 
-    n = len(train)
-    shard = n // K
-    subsets = [Subset(train, list(range(i*shard, (i+1)*shard))) for i in range(K-1)]
-    subsets.append(Subset(train, list(range((K-1)*shard, n))))
-
-    global_model = TwoNN(in_dim=28*28, hidden=200, num_classes=10)
+    # ---- clients & server ----
     clients = [
-        FedAvgClient(i, global_model, subsets[i], lr=lr, batch_size=batch_size, device=device)
-        for i in range(K)
+        FedAvgClient(
+            cid=i,
+            model=global_model,
+            dataset=train_subsets[i],
+            lr=OPTIMIZER["lr"],
+            batch_size=TRAINING["train_batch_size"],
+            device=device,
+        )
+        for i in range(DATASET["num_clients"])
     ]
     server = FedAvgServer(global_model, clients, device=device)
-    return server
 
-# ----------------- 训练主循环 -----------------
-def main():
-    set_seed(0)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print("Device:", device)
-
-    # 训练参数
-    K = 20               # 客户端数
-    R = 50               # 联邦轮数
-    fraction = 0.2      # 每轮采样比例
-    local_epochs = 2    # 客户端本地训练 epoch
-    lr = 0.05
-    batch_size = 64
-
-    # 选一个数据构造器（MNIST / 合成）
-    server = make_clients_mnist(K=K, device=device, lr=lr, batch_size=batch_size)
-    # server = make_clients_synth(K=K, device=device, lr=lr, batch_size=batch_size)
-
-    for r in range(R):
-        stats = server.run_round(fraction=fraction, local_epochs=local_epochs)
-        acc = evaluate(server.global_model, device=device)
-        print(f"[Round {r}] {stats}  acc={acc:.4f}")
+    # ---- training loop ----
+    for r in range(TRAINING["rounds"]):
+        stats = server.run_round(
+            fraction=TRAINING["fraction"],
+            local_epochs=TRAINING["local_epochs"],
+        )
+        metrics = server.evaluate_global(
+            dataset=testset,
+            batch_size=TRAINING["eval_batch_size"],
+            device=device,
+            loss_fn=LOSS_FN,
+        )
+        print(f"[Round {r}] {stats}  acc={metrics['accuracy']:.4f}  loss={metrics['loss']:.4f}")
 
 if __name__ == "__main__":
     main()
