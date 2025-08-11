@@ -22,7 +22,7 @@ def main():
     # ---- data split (IID / Dirichlet non-IID) ----
     train_subsets, testset = mnist_subsets(
         n_clients=DATASET["num_clients"],
-        scheme=DATASET["partition"],          # "iid" 或 "dirichlet"/"noniid"
+        scheme=DATASET["partition"],
         alpha=DATASET["dirichlet_alpha"],
         seed=TRAINING["seed"],
         root=DATASET["root"],
