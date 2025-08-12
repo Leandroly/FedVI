@@ -2,7 +2,7 @@
 import torch, random, numpy as np
 
 from src.utils.config import DATASET, MODEL, TRAINING, OPTIMIZER, LOSS_FN
-from src.utils.models import TwoNN
+from src.utils.models import TwoNN, OneNN
 from src.client.FedAvg import FedAvgClient
 from src.server.FedAvg import FedAvgServer
 from generate_data import mnist_subsets
@@ -29,9 +29,8 @@ def main():
     )
 
     # ---- model ----
-    global_model = TwoNN(
+    global_model = OneNN(
         in_dim=MODEL["in_dim"],
-        hidden=MODEL["hidden"],
         num_classes=MODEL["num_classes"],
     )
 
