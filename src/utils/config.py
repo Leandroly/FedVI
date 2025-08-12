@@ -4,15 +4,14 @@ from torch import optim, nn
 DATASET = {
     "name": "mnist",
     "root": "./data",
-    "partition": "dirichlet",
+    "partition": "iid",
     "dirichlet_alpha": 0.5,
     "num_clients": 20,
 }
 
 MODEL = {
-    "name": "TwoNN",
+    "name": "OneNN",
     "in_dim": 28*28,
-    "hidden": 200,
     "num_classes": 10,
 }
 
@@ -29,7 +28,6 @@ TRAINING = {
 OPTIMIZER = {
     "name": "sgd",
     "lr": 0.05,
-    "momentum": 0.9,
     "weight_decay": 0.0,
 }
 

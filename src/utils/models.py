@@ -21,3 +21,12 @@ class TwoNN(BaseModel):
             nn.ReLU()
         )
         self.classifier = nn.Linear(hidden, num_classes)
+
+class OneNN(BaseModel):
+    def __init__(self, in_dim, num_classes):
+        super().__init__()
+        self.base = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(in_dim, num_classes)
+        )
+        self.classifier = nn.Identity()

@@ -25,7 +25,7 @@ class FedAvgClient:
 
     def train_one_round(self, *, local_epochs=1):
         self.model.train()
-        opt = torch.optim.SGD(self.model.parameters(), lr=self.lr, momentum=0.9)
+        opt = torch.optim.SGD(self.model.parameters(), lr=self.lr)
         loss_fn = torch.nn.CrossEntropyLoss()
         loader = self._loader()
 
