@@ -15,6 +15,18 @@ class ScaffoldClient:
             self.c_local = {k: torch.zeros_like(v, device=self.device) for k, v in self.model.state_dict().items()}
             self.c_global = {k: torch.zeros_like(v, device=self.device) for k, v in self.model.state_dict().items()}
 
+    def set_global_weights(self, state_dict):
+        self.model.load_state_dict(state_dict, strict=True)
+
+    def set_global_control(self, c_global):
+        self.c_global = {k: v.to(self.device) for k, v in c_global.items()}
+    
+    def get_state(self):
+        return {k: v.detach().cpu() for k, v in self.model.state_dict().items()}
+    
+    def num_samples(self):
+        return len(self.dataset)
+    
     def _loader(self):
         return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True, drop_last=False)
 
@@ -25,7 +37,7 @@ class ScaffoldClient:
         loader = self._loader()
 
         with torch.no_grad():
-            w0 = {k: v.clone() for k, v in self.model.state_dict().items()}
+            x = {k: v.clone() for k, v in self.model.state_dict().items()}
         
         K = 0
         for _ in range(local_epochs):
@@ -45,3 +57,23 @@ class ScaffoldClient:
                 
                 opt.step()
                 K += 1
+        
+        with torch.no_grad():
+            y_i = {k: v.clone() for k, v in self.model.state_dict().items()}
+        
+        inv = 1/(K * self.lr)
+
+        delta_c = {}
+        with torch.no_grad():
+            for i in self.c_local.keys():
+                c_local_new = self.c_local[i] - self.c_global[i] + inv * (x[i] - y_i[i])
+                delta = c_local_new - self.c_local[i]
+                self.c_local[i].copy_(c_local_new)
+                delta_c[i] = delta.detach().cpu()
+        
+        return {
+            "cid": self.cid,
+            "num_samples": self.dataset.num_samples,
+            "state": self.get_state(),
+            "delta_c": delta_c
+        }
